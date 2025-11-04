@@ -1,0 +1,6 @@
+{
+    "module_name": "project_creator_core",
+    "path": {
+        "data": "./project/data/project_creator_core"
+    }
+}
