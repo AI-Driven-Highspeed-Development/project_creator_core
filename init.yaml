@@ -1,4 +1,8 @@
 version: 0.0.1
 folder_path: cores/project_creator_core
 type: core
-requirements: []
+requirements:
+  - https://github.com/AI-Driven-Highspeed-Development/github_api_core.git
+  - https://github.com/AI-Driven-Highspeed-Development/yaml_reading_core.git
+  - https://github.com/AI-Driven-Highspeed-Development/questionary_core.git
+  - https://github.com/AI-Driven-Highspeed-Development/Logger-Util.git

@@ -3,10 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
+import shutil
 
 import yaml
 
-from cores.github_api_core import GithubApi
+from cores.github_api_core.api import GithubApi
 
 
 @dataclass
@@ -14,7 +15,6 @@ class ProjectParams:
     repo_path: str
     module_urls: List[str]
     project_name: str
-    module_type: str
 
 
 class ProjectCreator:
@@ -31,23 +31,34 @@ class ProjectCreator:
     def create(self, template_url: str) -> str:
         target = Path(self.params.repo_path).expanduser().resolve()
         target.parent.mkdir(parents=True, exist_ok=True)
-
-        api = GithubApi(template_url)
-        dest = api.pull_repo(str(target))
+        api = GithubApi()
+        repo = api.repo(template_url)
+        dest = repo.clone_repo(str(target))
         if not dest:
             raise RuntimeError(f"Failed to clone template from {template_url} to {target}")
 
+        # Remove .git directory from the cloned template
+        self._remove_git_dir(Path(dest))
+
         # Emit init.yaml
+        self._write_init_yaml(Path(dest) / "init.yaml")
+
+        return str(dest)
+    
+    
+    def _remove_git_dir(self, path: Path) -> None:
+        """Remove .git directory if it exists because we don't want to actually use the template's git history"""  
+        git_dir = path / ".git"
+        if git_dir.exists() and git_dir.is_dir():
+            shutil.rmtree(git_dir)
+
+    def _write_init_yaml(self, init_path: Path) -> None:
         init_data = {
             "name": self.params.project_name,
             "description": "",
             "modules": list(self.params.module_urls),
         }
-        init_path = Path(dest) / "init.yaml"
         with open(init_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(init_data, f, allow_unicode=True, sort_keys=False)
-
-        return str(dest)
-
 
 __all__ = ["ProjectCreator", "ProjectParams"]
