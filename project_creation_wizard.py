@@ -3,29 +3,44 @@ from __future__ import annotations
 import re
 from typing import Callable, Iterable, Optional, TypeVar
 
+from managers.config_manager import ConfigManager
 from cores.github_api_core.api import GithubApi
+from cores.creator_common_core.creator_common_core import (
+    RepoCreationOptions,
+    TemplateInfo,
+    list_templates,
+)
 from cores.project_creator_core.project_creator import (
     ProjectCreator,
     ProjectParams,
-    RepoCreationOptions,
 )
+from cores.exceptions_core.adhd_exceptions import ADHDError
 from cores.project_creator_core.preload_sets import PreloadSet, parse_preload_sets
-from cores.project_creator_core.templates import TemplateInfo, list_project_templates
 from cores.questionary_core.questionary_core import QuestionaryCore
-from cores.yaml_reading_core.yaml_file import YamlFile
+from cores.yaml_reading_core.yaml_reading import YamlReadingCore as yaml_reading
 from utils.logger_util.logger import Logger
 
 T = TypeVar("T")
 
 
 def run_project_creation_wizard(
-    proj_tmpls: YamlFile,
-    mod_preload_sets: YamlFile,
     *,
     prompter: QuestionaryCore,
     logger: Logger,
 ) -> None:
     """Guide the user through the interactive project scaffolding workflow."""
+
+    cm = ConfigManager()
+    main_cfg = cm.config.main_config
+    proj_tmpls = yaml_reading.read_yaml(main_cfg.path.project_templates)
+    mod_preload_sets = yaml_reading.read_yaml(main_cfg.path.module_preload_sets)
+
+    if proj_tmpls is None:
+        logger.error("No project templates configuration found.")
+        return
+    if mod_preload_sets is None:
+        logger.error("No module preload sets configuration found.")
+        return
 
     try:
         raw_project_name = prompter.autocomplete_input(
@@ -45,25 +60,35 @@ def run_project_creation_wizard(
         logger.info("Input cancelled. Exiting.")
         return
 
-    templates: list[TemplateInfo] = list_project_templates(proj_tmpls)
+    templates: list[TemplateInfo] = list_templates(proj_tmpls.to_dict())
     if not templates:
         logger.error("No project templates found in configuration.")
         return
 
-    template_lookup = _choices_map(
-        templates,
-        formatter=lambda tmpl: f"{tmpl.name} — {tmpl.description or tmpl.url}",
-    )
-    try:
-        selected_template_label = prompter.multiple_choice(
-            "Select a project template",
-            list(template_lookup.keys()),
-            default=next(iter(template_lookup)),
+    if len(templates) == 1:
+        # If there's only one template, select it automatically without prompting.
+        only_template = templates[0]
+        logger.info(
+            "Single project template detected; using '%s' (%s) automatically.",
+            only_template.name,
+            only_template.url,
         )
-    except KeyboardInterrupt:
-        logger.info("Template selection cancelled. Exiting.")
-        return
-    template_url = template_lookup[selected_template_label].url
+        template_url = only_template.url
+    else:
+        template_lookup = _choices_map(
+            templates,
+            formatter=lambda tmpl: f"{tmpl.name} — {tmpl.description or tmpl.url}",
+        )
+        try:
+            selected_template_label = prompter.multiple_choice(
+                "Select a project template",
+                list(template_lookup.keys()),
+                default=next(iter(template_lookup)),
+            )
+        except KeyboardInterrupt:
+            logger.info("Template selection cancelled. Exiting.")
+            return
+        template_url = template_lookup[selected_template_label].url
 
     always_urls, sets = parse_preload_sets(mod_preload_sets)
     preload_lookup = _choices_map(
@@ -104,7 +129,7 @@ def run_project_creation_wizard(
     creator = ProjectCreator(params)
     try:
         dest = creator.create(template_url)
-    except Exception as exc:  # pragma: no cover - CLI flow
+    except ADHDError as exc:  # pragma: no cover - CLI flow
         logger.error(f"❌ Failed to create project: {exc}")
         return
 
@@ -140,13 +165,13 @@ def _prompt_repo_creation(prompter: QuestionaryCore, logger: Logger) -> Optional
     try:
         api = GithubApi()
         user_login = api.get_authenticated_user_login()
-    except Exception as exc:
+    except ADHDError as exc:
         logger.error(f"Failed to initialize GitHub CLI: {exc}")
         return None
 
     try:
         orgs = api.get_user_orgs()
-    except Exception as exc:
+    except ADHDError as exc:
         logger.error(f"Failed to fetch organizations: {exc}")
         orgs = []
 
