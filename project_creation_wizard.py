@@ -31,9 +31,9 @@ def run_project_creation_wizard(
     """Guide the user through the interactive project scaffolding workflow."""
 
     cm = ConfigManager()
-    main_cfg = cm.config.main_config
-    proj_tmpls = yaml_reading.read_yaml(main_cfg.path.project_templates)
-    mod_preload_sets = yaml_reading.read_yaml(main_cfg.path.module_preload_sets)
+    config = cm.config.project_creator_core
+    proj_tmpls = yaml_reading.read_yaml(config.path.project_templates)
+    mod_preload_sets = yaml_reading.read_yaml(config.path.module_preload_sets)
 
     if proj_tmpls is None:
         logger.error("No project templates configuration found.")
@@ -69,10 +69,7 @@ def run_project_creation_wizard(
         # If there's only one template, select it automatically without prompting.
         only_template = templates[0]
         logger.info(
-            "Single project template detected; using '%s' (%s) automatically.",
-            only_template.name,
-            only_template.url,
-        )
+            f"Single project template detected; using {only_template.name} ({only_template.url}) automatically.")
         template_url = only_template.url
     else:
         template_lookup = _choices_map(

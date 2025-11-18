@@ -1,6 +1,8 @@
 {
     "module_name": "project_creator_core",
     "path": {
-        "data": "./project/data/project_creator_core"
+        "data": "./project/data/project_creator_core",
+        "project_templates": "./project/data/project_creator_core/project_templates.yaml",
+        "module_preload_sets": "./project/data/project_creator_core/module_preload_sets.yaml"
     }
 }

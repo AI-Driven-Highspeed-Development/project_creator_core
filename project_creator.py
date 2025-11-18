@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
@@ -11,6 +12,7 @@ from cores.creator_common_core.creator_common_core import (
     clone_template,
     create_remote_repo,
 )
+from cores.project_init_core.project_init import ProjectInit
 from utils.logger_util.logger import Logger
 
 
@@ -34,6 +36,7 @@ class ProjectCreator:
         api = GithubApi()
         dest_path = clone_template(api, template_url, target)
         self._write_init_yaml(dest_path / "init.yaml")
+        self._initialize_project(dest_path)
 
         if self.params.repo_options:
             create_remote_repo(
@@ -60,6 +63,20 @@ class ProjectCreator:
         }
         with open(init_path, "w", encoding="utf-8") as handle:
             yaml.safe_dump(init_data, handle, allow_unicode=True, sort_keys=False)
+
+    def _initialize_project(self, project_root: Path) -> None:
+        """Run ProjectInit to hydrate the freshly cloned project."""
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(project_root)
+            self.logger.info("Initializing project modules via ProjectInit")
+            initializer = ProjectInit(project_root=project_root)
+            initializer.init_project()
+        except Exception as exc:
+            self.logger.error(f"Project initialization failed: {exc}")
+            raise
+        finally:
+            os.chdir(original_cwd)
 
 
 __all__ = ["ProjectCreator", "ProjectParams", "RepoCreationOptions"]
