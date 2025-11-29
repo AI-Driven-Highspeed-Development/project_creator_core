@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Callable, Iterable, Optional, TypeVar
 
 from managers.config_manager import ConfigManager
@@ -51,11 +52,13 @@ def run_project_creation_wizard(
         project_name = _to_snake_case(raw_project_name)
         if project_name != raw_project_name:
             logger.info(f"Project name normalized to '{project_name}'")
-        dest_path = prompter.path_input(
-            "Destination path",
-            default=f"./{project_name}",
-            only_directories=False,
+        
+        parent_dir = prompter.path_input(
+            "Destination parent directory",
+            default=".",
+            only_directories=True,
         )
+        dest_path = str(Path(parent_dir) / project_name)
     except KeyboardInterrupt:
         logger.info("Input cancelled. Exiting.")
         return
