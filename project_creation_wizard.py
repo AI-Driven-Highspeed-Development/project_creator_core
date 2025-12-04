@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, Optional, TypeVar
 
@@ -10,6 +10,7 @@ from cores.creator_common_core.creator_common_core import (
     RepoCreationOptions,
     TemplateInfo,
     list_templates,
+    to_snake_case,
 )
 from cores.project_creator_core.project_creator import (
     ProjectCreator,
@@ -24,12 +25,33 @@ from utils.logger_util.logger import Logger
 T = TypeVar("T")
 
 
+@dataclass
+class ProjectWizardArgs:
+    """Pre-filled arguments for project creation wizard."""
+    name: Optional[str] = None
+    parent_dir: Optional[str] = None
+    template: Optional[str] = None
+    preload_sets: Optional[list[str]] = None  # Multiple preload set names
+    create_repo: Optional[bool] = None  # None = ask, True = yes, False = no
+    owner: Optional[str] = None
+    visibility: Optional[str] = None  # "public" or "private"
+
+
 def run_project_creation_wizard(
     *,
     prompter: QuestionaryCore,
     logger: Logger,
+    prefilled: Optional[ProjectWizardArgs] = None,
 ) -> None:
-    """Guide the user through the interactive project scaffolding workflow."""
+    """Guide the user through the interactive project scaffolding workflow.
+    
+    Args:
+        prompter: QuestionaryCore instance for interactive prompts
+        logger: Logger instance
+        prefilled: Pre-filled arguments to skip corresponding prompts
+    """
+    if prefilled is None:
+        prefilled = ProjectWizardArgs()
 
     cm = ConfigManager()
     config = cm.config.project_creator_core
@@ -44,20 +66,30 @@ def run_project_creation_wizard(
         return
 
     try:
-        raw_project_name = prompter.autocomplete_input(
-            "Project name",
-            choices=[],
-            default="my_project",
-        )
-        project_name = _to_snake_case(raw_project_name)
-        if project_name != raw_project_name:
-            logger.info(f"Project name normalized to '{project_name}'")
+        # Project name
+        if prefilled.name:
+            project_name = to_snake_case(prefilled.name)
+            if project_name != prefilled.name:
+                logger.info(f"Project name normalized to '{project_name}'")
+        else:
+            raw_project_name = prompter.autocomplete_input(
+                "Project name",
+                choices=[],
+                default="my_project",
+            )
+            project_name = to_snake_case(raw_project_name)
+            if project_name != raw_project_name:
+                logger.info(f"Project name normalized to '{project_name}'")
         
-        parent_dir = prompter.path_input(
-            "Destination parent directory",
-            default=".",
-            only_directories=True,
-        )
+        # Parent directory
+        if prefilled.parent_dir:
+            parent_dir = prefilled.parent_dir
+        else:
+            parent_dir = prompter.path_input(
+                "Destination parent directory",
+                default=".",
+                only_directories=True,
+            )
         dest_path = str(Path(parent_dir) / project_name)
     except KeyboardInterrupt:
         logger.info("Input cancelled. Exiting.")
@@ -68,7 +100,26 @@ def run_project_creation_wizard(
         logger.error("No project templates found in configuration.")
         return
 
-    if len(templates) == 1:
+    # Template selection
+    template_url: Optional[str] = None
+    if prefilled.template:
+        # Try to match by name or URL
+        matched = None
+        for t in templates:
+            if t.name == prefilled.template or t.url == prefilled.template:
+                matched = t
+                break
+        if matched:
+            template_url = matched.url
+            logger.info(f"Using template: {matched.name}")
+        elif prefilled.template.startswith(("http://", "https://", "git@")):
+            # Assume it's a direct URL
+            template_url = prefilled.template
+            logger.info(f"Using template URL: {template_url}")
+        else:
+            logger.error(f"Template '{prefilled.template}' not found.")
+            return
+    elif len(templates) == 1:
         # If there's only one template, select it automatically without prompting.
         only_template = templates[0]
         logger.info(
@@ -91,31 +142,42 @@ def run_project_creation_wizard(
         template_url = template_lookup[selected_template_label].url
 
     always_urls, sets = parse_preload_sets(mod_preload_sets)
-    preload_lookup = _choices_map(
-        ["None", *sets],
-        formatter=lambda item: "None"
-        if isinstance(item, str)
-        else f"{item.name} — {item.description}",
-    )
-    try:
-        selected_set_label = prompter.multiple_choice(
-            "Select a module preload set",
-            list(preload_lookup.keys()),
-            default=next(iter(preload_lookup)),
-        )
-    except KeyboardInterrupt:
-        logger.info("Preload selection cancelled. Exiting.")
-        return
-
+    
+    # Preload set selection (multiple)
     selected_urls: list[str] = []
-    preload_value = preload_lookup[selected_set_label]
-    if isinstance(preload_value, PreloadSet):
-        selected_urls = preload_value.urls
+    if prefilled.preload_sets is not None:
+        # Use prefilled selections
+        for set_name in prefilled.preload_sets:
+            matched_set = next((s for s in sets if s.name == set_name), None)
+            if matched_set:
+                selected_urls.extend(matched_set.urls)
+                logger.info(f"Using preload set: {matched_set.name}")
+            else:
+                available_names = [s.name for s in sets]
+                logger.error(f"Preload set '{set_name}' not found. Available: {', '.join(available_names)}")
+                return
+    else:
+        set_choices = [f"{s.name} — {s.description}" for s in sets]
+        if set_choices:
+            try:
+                selected_labels = prompter.multiple_select(
+                    "Select module preload sets (space to toggle, enter to confirm)",
+                    set_choices,
+                )
+            except KeyboardInterrupt:
+                logger.info("Preload selection cancelled. Exiting.")
+                return
+
+            # Map selected labels back to PreloadSet objects
+            label_to_set = {f"{s.name} — {s.description}": s for s in sets}
+            for label in selected_labels:
+                ps = label_to_set[label]
+                selected_urls.extend(ps.urls)
 
     module_urls = list(dict.fromkeys(always_urls + selected_urls))
 
     try:
-        repo_options = _prompt_repo_creation(prompter, logger)
+        repo_options = _prompt_repo_creation(prompter, logger, prefilled)
     except KeyboardInterrupt:
         logger.info("Repository creation cancelled. Exiting.")
         return
@@ -148,19 +210,28 @@ def _choices_map(items: Iterable[T], *, formatter: Callable[[T], str]) -> dict[s
     return lookup
 
 
-def _prompt_repo_creation(prompter: QuestionaryCore, logger: Logger) -> Optional[RepoCreationOptions]:
-    try:
-        create_choice = prompter.multiple_choice(
-            "Create a GitHub repository for this project?",
-            ["Yes", "No"],
-            default="Yes",
-        )
-    except KeyboardInterrupt:
-        logger.info("Repository creation choice cancelled. Exiting.")
-        raise
-
-    if create_choice != "Yes":
+def _prompt_repo_creation(
+    prompter: QuestionaryCore,
+    logger: Logger,
+    prefilled: ProjectWizardArgs,
+) -> Optional[RepoCreationOptions]:
+    # Check if repo creation is pre-determined
+    if prefilled.create_repo is False:
         return None
+    
+    if prefilled.create_repo is None:
+        try:
+            create_choice = prompter.multiple_choice(
+                "Create a GitHub repository for this project?",
+                ["Yes", "No"],
+                default="Yes",
+            )
+        except KeyboardInterrupt:
+            logger.info("Repository creation choice cancelled. Exiting.")
+            raise
+
+        if create_choice != "Yes":
+            return None
 
     try:
         api = GithubApi()
@@ -188,40 +259,48 @@ def _prompt_repo_creation(prompter: QuestionaryCore, logger: Logger) -> Optional
         logger.error("No eligible GitHub owners found; skipping repository creation.")
         return None
 
-    owner_labels = list(owner_lookup.keys())
-    options_preview = "\n".join(f" - {label}" for label in owner_labels)
-    logger.info(f"Available repository owners:\n{options_preview}")
+    # Owner selection
+    if prefilled.owner:
+        # Validate the prefilled owner
+        if prefilled.owner in owner_lookup.values():
+            owner = prefilled.owner
+        else:
+            logger.error(f"Owner '{prefilled.owner}' not found. Available: {', '.join(owner_lookup.values())}")
+            return None
+    else:
+        owner_labels = list(owner_lookup.keys())
+        options_preview = "\n".join(f" - {label}" for label in owner_labels)
+        logger.info(f"Available repository owners:\n{options_preview}")
 
-    try:
-        owner_label = prompter.multiple_choice(
-            "Select repository owner",
-            owner_labels
-        )
-    except KeyboardInterrupt:
-        logger.info("Repository owner selection cancelled. Exiting.")
-        raise
+        try:
+            owner_label = prompter.multiple_choice(
+                "Select repository owner",
+                owner_labels
+            )
+        except KeyboardInterrupt:
+            logger.info("Repository owner selection cancelled. Exiting.")
+            raise
+        owner = owner_lookup[owner_label]
 
-    owner = owner_lookup[owner_label]
-
-    try:
-        visibility_choice = prompter.multiple_choice(
-            "Repository visibility",
-            ["Public", "Private"],
-            default="Private",
-        )
-    except KeyboardInterrupt:
-        logger.info("Repository visibility selection cancelled. Exiting.")
-        raise
-
-    visibility = "private" if visibility_choice == "Private" else "public"
+    # Visibility selection
+    if prefilled.visibility:
+        if prefilled.visibility not in ["public", "private"]:
+            logger.error(f"Invalid visibility '{prefilled.visibility}'. Must be 'public' or 'private'.")
+            return None
+        visibility = prefilled.visibility
+    else:
+        try:
+            visibility_choice = prompter.multiple_choice(
+                "Repository visibility",
+                ["Public", "Private"],
+                default="Private",
+            )
+        except KeyboardInterrupt:
+            logger.info("Repository visibility selection cancelled. Exiting.")
+            raise
+        visibility = "private" if visibility_choice == "Private" else "public"
+    
     return RepoCreationOptions(owner=owner, visibility=visibility)
 
 
-__all__ = ["run_project_creation_wizard"]
-
-
-def _to_snake_case(value: str) -> str:
-    cleaned = re.sub(r"[^0-9a-zA-Z]+", "_", value.strip())
-    cleaned = re.sub(r"_+", "_", cleaned).strip("_")
-    result = cleaned.lower()
-    return result or "project"
+__all__ = ["run_project_creation_wizard", "ProjectWizardArgs"]
