@@ -12,10 +12,7 @@ from cores.creator_common_core.creator_common_core import (
     list_templates,
     to_snake_case,
 )
-from cores.project_creator_core.project_creator import (
-    ProjectCreator,
-    ProjectParams,
-)
+from cores.project_creator_core.project_creator import ProjectCreator
 from cores.exceptions_core.adhd_exceptions import ADHDError
 from cores.project_creator_core.preload_sets import PreloadSet, parse_preload_sets
 from cores.questionary_core.questionary_core import QuestionaryCore

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Dict, Any
+from typing import List, Any
 
 from cores.yaml_reading_core.yaml_file import YamlFile
 
