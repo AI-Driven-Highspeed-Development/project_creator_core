@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "{description}"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "argcomplete>=3.0",
+    "mcp>=1.0",
+{dependencies}]
 
 [project.scripts]
 adhd = "adhd_framework:main"
@@ -15,3 +18,13 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["."]
+
+[tool.uv.workspace]
+members = [
+    "cores/*",
+    "managers/*",
+    "utils/*",
+    "plugins/*",
+    "mcps/*",
+]
+{uv_sources}
