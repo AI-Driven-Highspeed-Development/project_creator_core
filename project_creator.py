@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
@@ -12,10 +13,8 @@ import subprocess
 from exceptions_core import ADHDError
 from creator_common_core import (
     RepoCreationOptions,
-    # DEPRECATED_P3: clone_template no longer needed - using embedded templates
     create_remote_repo,
 )
-# DEPRECATED_P3: ProjectInit no longer needed
 from logger_util import Logger
 
 
@@ -25,6 +24,11 @@ from logger_util import Logger
 # ============================================================================
 
 TEMPLATES_DIR = Path(__file__).parent / "data" / "templates"
+
+# Path to the framework's adhd_framework.py - used for direct copy to new projects
+# This resolves to the actual framework root, not a template
+FRAMEWORK_ROOT = Path(__file__).parent.parent.parent
+ADHD_FRAMEWORK_FILE = FRAMEWORK_ROOT / "adhd_framework.py"
 
 
 def _load_template(name: str) -> str:
@@ -50,7 +54,7 @@ PROJECT_DIRECTORIES = [
 @dataclass
 class ProjectParams:
     repo_path: str
-    module_urls: List[str]  # DEPRECATED_P3: module_urls no longer used
+    module_urls: List[str]  # Git URLs for modules to install (from preload sets)
     project_name: str
     description: str = ""  # Optional project description
     repo_options: Optional[RepoCreationOptions] = None
@@ -83,9 +87,14 @@ class ProjectCreator:
         self._write_app_entry(dest_path)
         self._write_tests_init(dest_path)
         self._write_project_init(dest_path)
+        self._copy_adhd_framework(dest_path)
         
         # Initialize with UV
         self._run_uv_sync(dest_path)
+        
+        # Install preloaded modules from git URLs
+        if self.params.module_urls:
+            self._install_preload_modules(dest_path)
 
         # Create remote repo if requested
         if self.params.repo_options:
@@ -179,6 +188,22 @@ class ProjectCreator:
         project_init.write_text('"""Project-specific data and configuration."""\n', encoding="utf-8")
         self.logger.info(f"Wrote project/__init__.py")
 
+    def _copy_adhd_framework(self, project_path: Path) -> None:
+        """Copy the actual adhd_framework.py from the framework to the new project.
+        
+        This copies the real framework CLI file (not a template) to enable
+        the 'adhd' command in the new project.
+        """
+        if not ADHD_FRAMEWORK_FILE.exists():
+            raise ADHDError(
+                f"Framework file not found: {ADHD_FRAMEWORK_FILE}. "
+                "Cannot copy adhd_framework.py to new project."
+            )
+        
+        dest_file = project_path / "adhd_framework.py"
+        shutil.copy2(ADHD_FRAMEWORK_FILE, dest_file)
+        self.logger.info(f"Copied adhd_framework.py to {dest_file}")
+
     def _run_uv_sync(self, project_path: Path) -> None:
         """Run uv sync to initialize project dependencies."""
         self.logger.info("Running uv sync to initialize project")
@@ -192,6 +217,66 @@ class ProjectCreator:
         if result.returncode != 0:
             raise ADHDError(f"uv sync failed: {result.stderr}") from None
         self.logger.info("uv sync completed successfully")
+
+    def _install_preload_modules(self, project_path: Path) -> None:
+        """Install preloaded modules from git URLs using uv add.
+        
+        Each module URL is a git repository that gets added as a dependency.
+        Reports a summary of successes and failures at the end.
+        """
+        self.logger.info(f"Installing {len(self.params.module_urls)} preloaded modules...")
+        
+        successes: List[str] = []
+        failures: List[tuple[str, str]] = []  # (url, error_message)
+        
+        for url in self.params.module_urls:
+            self.logger.info(f"Adding module: {url}")
+            result = subprocess.run(
+                ["uv", "add", f"git+{url}"],
+                cwd=project_path,
+                capture_output=True,
+                text=True,
+                timeout=120  # Longer timeout for git clones
+            )
+            if result.returncode != 0:
+                # Log full stderr for visibility - don't swallow the error details
+                error_msg = result.stderr.strip() if result.stderr else "Unknown error"
+                self.logger.error(f"FAILED to add module: {url}")
+                self.logger.error(f"  Error details: {error_msg}")
+                if result.stdout:
+                    self.logger.error(f"  stdout: {result.stdout.strip()}")
+                failures.append((url, error_msg))
+                # Continue with other modules instead of failing completely
+            else:
+                self.logger.info(f"Successfully added module: {url}")
+                successes.append(url)
+        
+        # Report summary
+        self.logger.info("=" * 60)
+        self.logger.info("PRELOAD MODULES INSTALLATION SUMMARY")
+        self.logger.info("=" * 60)
+        self.logger.info(f"  Successes: {len(successes)}/{len(self.params.module_urls)}")
+        self.logger.info(f"  Failures:  {len(failures)}/{len(self.params.module_urls)}")
+        
+        if successes:
+            self.logger.info("  Installed successfully:")
+            for url in successes:
+                self.logger.info(f"    ✓ {url}")
+        
+        if failures:
+            self.logger.warning("  FAILED to install:")
+            for url, error in failures:
+                self.logger.warning(f"    ✗ {url}")
+                self.logger.warning(f"      Reason: {error[:200]}...")  # Truncate long errors
+        
+        self.logger.info("=" * 60)
+        
+        if failures:
+            self.logger.warning(
+                f"WARNING: {len(failures)} module(s) failed to install. "
+                "The project was created but may be missing dependencies. "
+                "You may need to manually run 'uv add git+<url>' for failed modules."
+            )
 
 
 __all__ = ["ProjectCreator", "ProjectParams", "RepoCreationOptions"]

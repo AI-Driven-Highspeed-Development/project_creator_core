@@ -50,5 +50,6 @@ def ensure_templates() -> None:
 
 
 from .project_creator import ProjectCreator, ProjectParams
+from .preload_sets import PreloadSet, parse_preload_sets
 
-__all__ = ["ProjectCreator", "ProjectParams", "ensure_templates"]
+__all__ = ["ProjectCreator", "ProjectParams", "PreloadSet", "parse_preload_sets", "ensure_templates"]

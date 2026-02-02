@@ -1,24 +1,33 @@
-# DEPRECATED_P3: Module preload sets are no longer used in project creation.
-# Projects now start empty and users add modules via `uv add` or `adhd new-module`.
-# This file is kept for backward compatibility but is not used by the wizard.
+"""Module preload sets - defines modules to auto-install in new projects.
+
+Provides parsing logic for module_preload_sets.yaml which defines:
+- `always`: Core modules every project needs (config_manager, logger_util, etc.)
+- `options`: Optional module bundles users can select during project creation
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import List, Dict, Any, Tuple
 
-from yaml_file import YamlFile
+from yaml_reading_core import YamlFile
 
 
 @dataclass
 class PreloadSet:
-	"""DEPRECATED_P3: Preload sets no longer used."""
+	"""An optional module bundle that users can select during project creation.
+	
+	Attributes:
+		name: Display name for the set (e.g., "HyperPM", "Default")
+		description: User-facing description of what the set provides
+		urls: Git URLs for modules in this set
+	"""
 	name: str
 	description: str
 	urls: List[str]
 
 
 def parse_preload_sets(yf: YamlFile) -> Tuple[List[str], List[PreloadSet]]:
-	"""DEPRECATED_P3: Preload sets no longer used in project creation.
+	"""Parse the module preload sets YAML into always URLs and optional sets.
 	
 	Parse the module preload sets YAML into always URLs and a list of sets.
 

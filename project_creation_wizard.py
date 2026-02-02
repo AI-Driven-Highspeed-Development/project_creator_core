@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from creator_common_core import (
     RepoCreationOptions,
     to_snake_case,
 )
 from .project_creator import ProjectCreator, ProjectParams
+from .preload_sets import parse_preload_sets, PreloadSet
 from exceptions_core import ADHDError
 from questionary_core import QuestionaryCore
 from logger_util import Logger
+from yaml_reading_core import YamlReadingCore
 
 
 @dataclass
@@ -20,7 +22,7 @@ class ProjectWizardArgs:
     name: Optional[str] = None
     parent_dir: Optional[str] = None
     description: Optional[str] = None  # Project description
-    # DEPRECATED_P3: template and preload_sets no longer used - embedded templates only
+    preload_sets: Optional[List[str]] = None  # Selected optional module sets (e.g., ["HyperPM"])
     create_repo: Optional[bool] = None  # None = ask, True = yes, False = no
     owner: Optional[str] = None
     visibility: Optional[str] = None  # "public" or "private"
@@ -78,6 +80,9 @@ def run_project_creation_wizard(
         logger.info("Input cancelled. Exiting.")
         return
 
+    # Load preload sets
+    module_urls = _load_and_select_preload_sets(prompter, logger, prefilled)
+
     # GitHub repository creation
     try:
         repo_options = _prompt_repo_creation(prompter, logger, prefilled)
@@ -88,7 +93,7 @@ def run_project_creation_wizard(
     # Create the project using embedded templates
     params = ProjectParams(
         repo_path=dest_path,
-        module_urls=[],  # DEPRECATED_P3: module_urls no longer used
+        module_urls=module_urls,
         project_name=project_name,
         description=description,
         repo_options=repo_options,
@@ -101,10 +106,94 @@ def run_project_creation_wizard(
         return
 
     logger.info(f"✅ Project created at: {dest}")
+    logger.info("")
     logger.info("Next steps:")
     logger.info(f"  cd {dest}")
+    logger.info(f"  source .venv/bin/activate  # activate the venv")
+    logger.info("")
+    logger.info("Then you can use the adhd command directly:")
+    logger.info("  adhd --help")
+    logger.info("  adhd new-module  # to add modules")
+    logger.info("")
+    logger.info("Or use 'uv run' without activating:")
     logger.info("  uv run adhd --help")
-    logger.info("  uv run adhd new-module  # to add modules")
+
+
+# Path to preload sets YAML file
+PRELOAD_SETS_PATH = Path(__file__).parent / "data" / "module_preload_sets.yaml"
+
+
+def _load_and_select_preload_sets(
+    prompter: QuestionaryCore,
+    logger: Logger,
+    prefilled: ProjectWizardArgs,
+) -> List[str]:
+    """Load preload sets and prompt user to select optional module bundles.
+    
+    Returns:
+        List of git URLs for all modules to install (always + selected options)
+    """
+    # Load the preload sets YAML
+    if not PRELOAD_SETS_PATH.exists():
+        logger.warning(f"Preload sets file not found: {PRELOAD_SETS_PATH}")
+        return []
+    
+    try:
+        yf = YamlReadingCore.read_yaml(PRELOAD_SETS_PATH)
+        always_urls, optional_sets = parse_preload_sets(yf)
+    except Exception as exc:
+        logger.warning(f"Failed to load preload sets: {exc}")
+        return []
+    
+    # Start with the "always" modules (core dependencies)
+    module_urls = list(always_urls)
+    logger.info(f"📦 Including {len(always_urls)} core modules automatically:")
+    for url in always_urls:
+        # Extract module name from URL for cleaner display
+        module_name = url.rstrip('.git').split('/')[-1]
+        logger.info(f"   • {module_name}")
+    
+    # If no optional sets available, return just the always modules
+    if not optional_sets:
+        return module_urls
+    
+    # Handle optional set selection
+    selected_set_names: List[str] = []
+    
+    if prefilled.preload_sets is not None:
+        # Use pre-filled selection
+        selected_set_names = prefilled.preload_sets
+    else:
+        # Prompt user to select optional module bundles
+        set_choices = [f"{s.name} - {s.description}" for s in optional_sets]
+        
+        try:
+            logger.info("")  # Blank line for visual separation
+            logger.info("🎯 Optional module bundles available:")
+            selected_labels = prompter.multiple_select(
+                "Select additional bundles (↑↓ to move, SPACE to toggle, ENTER to confirm)",
+                choices=set_choices,
+            )
+            # Extract set names from the labels
+            selected_set_names = [label.split(" - ")[0] for label in selected_labels]
+        except KeyboardInterrupt:
+            logger.info("Module selection cancelled. Using only core modules.")
+            return module_urls
+    
+    # Add URLs from selected optional sets
+    if selected_set_names:
+        logger.info("")  # Blank line for visual separation
+        logger.info(f"📦 Adding {len(selected_set_names)} optional bundle(s):")
+    for opt_set in optional_sets:
+        if opt_set.name in selected_set_names:
+            module_urls.extend(opt_set.urls)
+            logger.info(f"   • {opt_set.name} ({len(opt_set.urls)} module(s))")
+    
+    # Final summary
+    logger.info("")
+    logger.info(f"✅ Total modules to install: {len(module_urls)}")
+    
+    return module_urls
 
 
 def _prompt_repo_creation(

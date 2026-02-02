@@ -1,6 +1,8 @@
-# DEPRECATED_P3: Module preload sets are no longer used.
-# Projects now start empty and users add modules via `uv add` or `adhd new-module`.
-# This file is kept for backward compatibility but is not used by the wizard.
+# Module Preload Sets
+# Defines modules that are automatically added to new ADHD Framework projects.
+#
+# - `always`: Modules installed in every new project (core dependencies)
+# - `options`: Named sets that users can optionally select during project creation
 
 always:
   - https://github.com/AI-Driven-Highspeed-Development/Config-Manager.git
