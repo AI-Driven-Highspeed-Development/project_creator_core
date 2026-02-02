@@ -2,24 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable, Optional, TypeVar
+from typing import Optional
 
-from managers.config_manager import ConfigManager
-from cores.github_api_core.api import GithubApi
-from cores.creator_common_core.creator_common_core import (
+from creator_common_core import (
     RepoCreationOptions,
-    TemplateInfo,
-    list_templates,
     to_snake_case,
 )
-from cores.project_creator_core.project_creator import ProjectCreator, ProjectParams
-from cores.exceptions_core.adhd_exceptions import ADHDError
-from cores.project_creator_core.preload_sets import PreloadSet, parse_preload_sets
-from cores.questionary_core.questionary_core import QuestionaryCore
-from cores.yaml_reading_core.yaml_reading import YamlReadingCore as yaml_reading
-from utils.logger_util.logger import Logger
-
-T = TypeVar("T")
+from .project_creator import ProjectCreator, ProjectParams
+from exceptions_core import ADHDError
+from questionary_core import QuestionaryCore
+from logger_util import Logger
 
 
 @dataclass
@@ -27,8 +19,8 @@ class ProjectWizardArgs:
     """Pre-filled arguments for project creation wizard."""
     name: Optional[str] = None
     parent_dir: Optional[str] = None
-    template: Optional[str] = None
-    preload_sets: Optional[list[str]] = None  # Multiple preload set names
+    description: Optional[str] = None  # Project description
+    # DEPRECATED_P3: template and preload_sets no longer used - embedded templates only
     create_repo: Optional[bool] = None  # None = ask, True = yes, False = no
     owner: Optional[str] = None
     visibility: Optional[str] = None  # "public" or "private"
@@ -42,6 +34,8 @@ def run_project_creation_wizard(
 ) -> None:
     """Guide the user through the interactive project scaffolding workflow.
     
+    Creates a new project using embedded templates (no external cloning).
+    
     Args:
         prompter: QuestionaryCore instance for interactive prompts
         logger: Logger instance
@@ -49,18 +43,6 @@ def run_project_creation_wizard(
     """
     if prefilled is None:
         prefilled = ProjectWizardArgs()
-
-    cm = ConfigManager()
-    config = cm.config.project_creator_core
-    proj_tmpls = yaml_reading.read_yaml(config.path.project_templates)
-    mod_preload_sets = yaml_reading.read_yaml(config.path.module_preload_sets)
-
-    if proj_tmpls is None:
-        logger.error("No project templates configuration found.")
-        return
-    if mod_preload_sets is None:
-        logger.error("No module preload sets configuration found.")
-        return
 
     try:
         # Project name
@@ -88,123 +70,41 @@ def run_project_creation_wizard(
                 only_directories=True,
             )
         dest_path = str(Path(parent_dir) / project_name)
+        
+        # Optional description
+        description = prefilled.description or ""
+
     except KeyboardInterrupt:
         logger.info("Input cancelled. Exiting.")
         return
 
-    templates: list[TemplateInfo] = list_templates(proj_tmpls.to_dict())
-    if not templates:
-        logger.error("No project templates found in configuration.")
-        return
-
-    # Template selection
-    template_url: Optional[str] = None
-    if prefilled.template:
-        # Try to match by name or URL
-        matched = None
-        for t in templates:
-            if t.name == prefilled.template or t.url == prefilled.template:
-                matched = t
-                break
-        if matched:
-            template_url = matched.url
-            logger.info(f"Using template: {matched.name}")
-        elif prefilled.template.startswith(("http://", "https://", "git@")):
-            # Assume it's a direct URL
-            template_url = prefilled.template
-            logger.info(f"Using template URL: {template_url}")
-        else:
-            logger.error(f"Template '{prefilled.template}' not found.")
-            return
-    elif len(templates) == 1:
-        # If there's only one template, select it automatically without prompting.
-        only_template = templates[0]
-        logger.info(
-            f"Single project template detected; using {only_template.name} ({only_template.url}) automatically.")
-        template_url = only_template.url
-    else:
-        template_lookup = _choices_map(
-            templates,
-            formatter=lambda tmpl: f"{tmpl.name} — {tmpl.description or tmpl.url}",
-        )
-        try:
-            selected_template_label = prompter.multiple_choice(
-                "Select a project template",
-                list(template_lookup.keys()),
-                default=next(iter(template_lookup)),
-            )
-        except KeyboardInterrupt:
-            logger.info("Template selection cancelled. Exiting.")
-            return
-        template_url = template_lookup[selected_template_label].url
-
-    always_urls, sets = parse_preload_sets(mod_preload_sets)
-    
-    # Preload set selection (multiple)
-    selected_urls: list[str] = []
-    if prefilled.preload_sets is not None:
-        # Use prefilled selections
-        for set_name in prefilled.preload_sets:
-            matched_set = next((s for s in sets if s.name == set_name), None)
-            if matched_set:
-                selected_urls.extend(matched_set.urls)
-                logger.info(f"Using preload set: {matched_set.name}")
-            else:
-                available_names = [s.name for s in sets]
-                logger.error(f"Preload set '{set_name}' not found. Available: {', '.join(available_names)}")
-                return
-    else:
-        set_choices = [f"{s.name} — {s.description}" for s in sets]
-        if set_choices:
-            try:
-                selected_labels = prompter.multiple_select(
-                    "Select module preload sets (space to toggle, enter to confirm)",
-                    set_choices,
-                )
-            except KeyboardInterrupt:
-                logger.info("Preload selection cancelled. Exiting.")
-                return
-
-            # Map selected labels back to PreloadSet objects
-            label_to_set = {f"{s.name} — {s.description}": s for s in sets}
-            for label in selected_labels:
-                ps = label_to_set[label]
-                selected_urls.extend(ps.urls)
-
-    module_urls = list(dict.fromkeys(always_urls + selected_urls))
-
+    # GitHub repository creation
     try:
         repo_options = _prompt_repo_creation(prompter, logger, prefilled)
     except KeyboardInterrupt:
         logger.info("Repository creation cancelled. Exiting.")
         return
 
+    # Create the project using embedded templates
     params = ProjectParams(
         repo_path=dest_path,
-        module_urls=module_urls,
+        module_urls=[],  # DEPRECATED_P3: module_urls no longer used
         project_name=project_name,
+        description=description,
         repo_options=repo_options,
     )
     creator = ProjectCreator(params)
     try:
-        dest = creator.create(template_url)
+        dest = creator.create()
     except ADHDError as exc:  # pragma: no cover - CLI flow
         logger.error(f"❌ Failed to create project: {exc}")
         return
 
     logger.info(f"✅ Project created at: {dest}")
-
-
-def _choices_map(items: Iterable[T], *, formatter: Callable[[T], str]) -> dict[str, T]:
-    """Return an ordered mapping of menu labels to original items."""
-
-    lookup: dict[str, T] = {}
-    for item in items:
-        label = formatter(item)
-        if label in lookup:
-            raise ValueError("Duplicate option label generated for choices")
-        lookup[label] = item
-    return lookup
+    logger.info("Next steps:")
+    logger.info(f"  cd {dest}")
+    logger.info("  uv run adhd --help")
+    logger.info("  uv run adhd new-module  # to add modules")
 
 
 def _prompt_repo_creation(
@@ -212,6 +112,8 @@ def _prompt_repo_creation(
     logger: Logger,
     prefilled: ProjectWizardArgs,
 ) -> Optional[RepoCreationOptions]:
+    from github_api_core import GithubApi
+    
     # Check if repo creation is pre-determined
     if prefilled.create_repo is False:
         return None

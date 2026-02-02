@@ -1,27 +1,33 @@
+"""project_creator_core - Project creation and scaffolding.
+
+Provides ProjectCreator for creating new ADHD Framework projects.
+"""
+
 from __future__ import annotations
 from pathlib import Path
 import shutil
-import os
-import sys
-
-# Add path handling to work from the new nested directory structure
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.getcwd()  # Use current working directory as project root
-sys.path.insert(0, project_root)
+from functools import lru_cache
 
 PRELOAD_TEMPLATE_PATH = "data/module_preload_sets.yaml"
-
 TEMPLATE_PATH = "data/project_templates.yaml"
 
-from utils.logger_util.logger import Logger
-logger = Logger(name="ProjectCreatorInit")
 
-dest_dir = Path("./project/data/project_creator_core")
-if dest_dir.exists():
-    shutil.rmtree(dest_dir)
-dest_dir.mkdir(parents=True, exist_ok=True)
+def _get_dest_dir() -> Path:
+    """Get the destination directory for template files, creating if needed."""
+    dest_dir = Path("./project/data/project_creator_core")
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    return dest_dir
+
 
 def ensure_file(template_path: str) -> Path:
+    """Ensure a template file is copied to the project data directory.
+    
+    This is called lazily when templates are actually needed, not on import.
+    """
+    from logger_util import Logger
+    logger = Logger(name="ProjectCreatorInit")
+    
+    dest_dir = _get_dest_dir()
     dest_file_name = Path(template_path).name
     dest_path = dest_dir / dest_file_name
 
@@ -36,5 +42,13 @@ def ensure_file(template_path: str) -> Path:
     return dest_path
 
 
-ensure_file(PRELOAD_TEMPLATE_PATH)
-ensure_file(TEMPLATE_PATH)
+@lru_cache(maxsize=1)
+def ensure_templates() -> None:
+    """Ensure all template files are copied. Called lazily, not on import."""
+    ensure_file(PRELOAD_TEMPLATE_PATH)
+    ensure_file(TEMPLATE_PATH)
+
+
+from .project_creator import ProjectCreator, ProjectParams
+
+__all__ = ["ProjectCreator", "ProjectParams", "ensure_templates"]

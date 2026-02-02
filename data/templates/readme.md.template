@@ -1,0 +1,56 @@
+# {project_name}
+
+An ADHD Framework project.
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.11+
+- [UV](https://docs.astral.sh/uv/) package manager
+
+### Setup
+
+```bash
+# Clone the repository
+git clone <your-repo-url>
+cd {project_name}
+
+# Install dependencies and sync workspace
+uv sync
+
+# Run the framework CLI
+uv run adhd --help
+```
+
+## Project Structure
+
+```
+{project_name}/
+├── cores/          # Core framework modules
+├── managers/       # Manager modules
+├── utils/          # Utility modules
+├── plugins/        # Plugin modules
+├── mcps/           # MCP (Model Context Protocol) servers
+├── project/        # Project-specific data
+├── tests/          # Test files
+├── app.py          # Application entry point
+└── pyproject.toml  # Project configuration
+```
+
+## Development
+
+```bash
+# Add a new module
+uv run adhd new-module
+
+# Refresh framework (sync instructions, etc.)
+uv run adhd refresh
+
+# Run tests
+uv run pytest
+```
+
+## License
+
+[Add your license here]

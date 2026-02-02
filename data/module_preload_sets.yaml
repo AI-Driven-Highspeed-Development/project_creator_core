@@ -1,3 +1,7 @@
+# DEPRECATED_P3: Module preload sets are no longer used.
+# Projects now start empty and users add modules via `uv add` or `adhd new-module`.
+# This file is kept for backward compatibility but is not used by the wizard.
+
 always:
   - https://github.com/AI-Driven-Highspeed-Development/Config-Manager.git
   - https://github.com/AI-Driven-Highspeed-Development/Logger-Util.git

@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+
+# UV
+# Uncomment if you want reproducible builds:
+# uv.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.envrc
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ADHD Framework (cloned modules are workspace members)
+cores/
+managers/
+utils/
+plugins/
+mcps/
+.config.backup
+.github/
+
+# Temporary
+.temp_test/
+.temp_debug/
+.temp_agent_work/
+
+# VS Code workspace file
+*.code-workspace

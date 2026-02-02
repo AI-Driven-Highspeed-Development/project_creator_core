@@ -1,0 +1,18 @@
+#!/usr/bin/env python3
+"""
+{project_name} - Application Entry Point
+
+This is the main entry point for your application.
+"""
+
+from __future__ import annotations
+
+
+def main() -> None:
+    """Main application entry point."""
+    print("Hello from {project_name}!")
+    # TODO: Add your application logic here
+
+
+if __name__ == "__main__":
+    main()

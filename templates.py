@@ -1,20 +1,29 @@
+# DEPRECATED_P3: This entire module is deprecated.
+# Templates are now embedded directly in project_creator.py and module_creator.py
+# as Python string constants. No external template repos are used.
+# This file is kept for backward compatibility but should not be used.
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import List, Any
 
-from cores.yaml_reading_core.yaml_file import YamlFile
+from yaml_file import YamlFile
 
 
 @dataclass
 class TemplateInfo:
+	"""DEPRECATED_P3: Use embedded templates instead."""
 	name: str
 	description: str
 	url: str
 
 
 def list_project_templates(yf: YamlFile) -> List[TemplateInfo]:
-	"""Extract list of templates (dict-only format).
+	"""DEPRECATED_P3: Templates are now embedded in project_creator.py.
+	
+	This function is kept for backward compatibility only.
+	
+	Extract list of templates (dict-only format).
 
 	Canonical schema:
 	  <template_name>:

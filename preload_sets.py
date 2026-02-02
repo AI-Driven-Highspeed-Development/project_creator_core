@@ -1,20 +1,26 @@
+# DEPRECATED_P3: Module preload sets are no longer used in project creation.
+# Projects now start empty and users add modules via `uv add` or `adhd new-module`.
+# This file is kept for backward compatibility but is not used by the wizard.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
-from cores.yaml_reading_core.yaml_file import YamlFile
+from yaml_file import YamlFile
 
 
 @dataclass
 class PreloadSet:
+	"""DEPRECATED_P3: Preload sets no longer used."""
 	name: str
 	description: str
 	urls: List[str]
 
 
 def parse_preload_sets(yf: YamlFile) -> Tuple[List[str], List[PreloadSet]]:
-	"""Parse the module preload sets YAML into always URLs and a list of sets.
+	"""DEPRECATED_P3: Preload sets no longer used in project creation.
+	
+	Parse the module preload sets YAML into always URLs and a list of sets.
 
 	Canonical format (dict-only) under `options` is required:
 
