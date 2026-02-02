@@ -49,7 +49,7 @@ def ensure_templates() -> None:
     ensure_file(TEMPLATE_PATH)
 
 
-from .project_creator import ProjectCreator, ProjectParams, ModuleMetadata
+from .project_creator import ProjectCreator, ProjectParams, ModuleInfo
 from .preload_sets import PreloadSet, parse_preload_sets
 
-__all__ = ["ProjectCreator", "ProjectParams", "ModuleMetadata", "PreloadSet", "parse_preload_sets", "ensure_templates"]
+__all__ = ["ProjectCreator", "ProjectParams", "ModuleInfo", "PreloadSet", "parse_preload_sets", "ensure_templates"]
