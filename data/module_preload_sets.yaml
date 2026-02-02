@@ -10,6 +10,13 @@ always:
   - https://github.com/AI-Driven-Highspeed-Development/workspace_core.git
   - https://github.com/AI-Driven-Highspeed-Development/instruction_core.git
   - https://github.com/AI-Driven-Highspeed-Development/adhd_mcp.git
+  - https://github.com/AI-Driven-Highspeed-Development/creator_common_core.git
+  - https://github.com/AI-Driven-Highspeed-Development/exceptions_core.git
+  - https://github.com/AI-Driven-Highspeed-Development/github_api_core.git
+  - https://github.com/AI-Driven-Highspeed-Development/module_creator_core.git
+  - https://github.com/AI-Driven-Highspeed-Development/modules_controller_core.git
+  - https://github.com/AI-Driven-Highspeed-Development/yaml_reading_core.git
+  - https://github.com/AI-Driven-Highspeed-Development/temp_files_manager.git
 
 options:
   Default:
