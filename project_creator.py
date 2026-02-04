@@ -18,17 +18,7 @@ from creator_common_core import (
     create_remote_repo,
 )
 from logger_util import Logger
-
-
-# Module type to workspace directory mapping
-MODULE_TYPE_TO_DIR = {
-    "core": "cores",
-    "manager": "managers",
-    "util": "utils",
-    "mcp": "mcps",
-    "plugin": "plugins",
-}
-
+from modules_controller_core import MODULE_FOLDERS
 
 
 # ============================================================================
@@ -68,7 +58,7 @@ PROJECT_DIRECTORIES = [
 class ModuleInfo:
     """Metadata extracted from a cloned module."""
     package_name: str  # From [project] name in pyproject.toml
-    module_type: str   # From [tool.adhd] type in pyproject.toml
+    folder: str        # Inferred from path or [tool.adhd] type -> folder mapping
     folder_name: str   # The directory name (e.g., 'config_manager')
     git_url: str       # Original git URL
 
@@ -285,7 +275,7 @@ class ProjectCreator:
                         url, folder_name, temp_base, project_path
                     )
                     installed_modules.append(module_info)
-                    self.logger.info(f"  ✓ Installed {module_info.package_name} to {MODULE_TYPE_TO_DIR.get(module_info.module_type, 'unknown')}/")
+                    self.logger.info(f"  ✓ Installed {module_info.package_name} to {module_info.folder}/")
                 except Exception as e:
                     error_msg = str(e)
                     self.logger.error(f"  ✗ Failed to install {folder_name}: {error_msg}")
@@ -332,23 +322,22 @@ class ProjectCreator:
         if result.returncode != 0:
             raise ADHDError(f"git clone failed: {result.stderr}") from None
         
-        # Read pyproject.toml to get package name and type
+        # Read pyproject.toml to get package name and infer folder
         pyproject_path = temp_clone_path / "pyproject.toml"
         if not pyproject_path.exists():
             raise ADHDError(f"Module missing pyproject.toml: {folder_name}") from None
         
-        package_name, module_type = self._extract_module_metadata(pyproject_path)
+        package_name, target_folder = self._extract_module_metadata(pyproject_path)
         
-        # Determine target directory based on module type
-        type_dir = MODULE_TYPE_TO_DIR.get(module_type)
-        if not type_dir:
+        # Validate target folder
+        if target_folder not in MODULE_FOLDERS:
             raise ADHDError(
-                f"Unknown module type '{module_type}' for {folder_name}. "
-                f"Expected one of: {list(MODULE_TYPE_TO_DIR.keys())}"
+                f"Unknown target folder '{target_folder}' for {folder_name}. "
+                f"Expected one of: {MODULE_FOLDERS}"
             ) from None
         
         # Move to correct workspace folder
-        target_dir = project_path / type_dir / folder_name
+        target_dir = project_path / target_folder / folder_name
         if target_dir.exists():
             self.logger.warning(f"Module already exists at {target_dir}, skipping...")
             raise ADHDError(f"Module already exists: {target_dir}") from None
@@ -357,19 +346,21 @@ class ProjectCreator:
         
         return ModuleInfo(
             package_name=package_name,
-            module_type=module_type,
+            folder=target_folder,
             folder_name=folder_name,
             git_url=git_url,
         )
 
     def _extract_module_metadata(self, pyproject_path: Path) -> tuple[str, str]:
-        """Extract package name and module type from pyproject.toml.
+        """Extract package name and target folder from pyproject.toml.
+        
+        The folder is inferred from the module name suffix (e.g., _manager -> managers).
         
         Args:
             pyproject_path: Path to the module's pyproject.toml
             
         Returns:
-            Tuple of (package_name, module_type)
+            Tuple of (package_name, target_folder)
             
         Raises:
             ADHDError: If required fields are missing
@@ -385,15 +376,37 @@ class ProjectCreator:
                 f"pyproject.toml missing [project] name: {pyproject_path}"
             ) from None
         
-        # Get module type from [tool.adhd] type
-        tool_adhd = data.get("tool", {}).get("adhd", {})
-        module_type = tool_adhd.get("type")
-        if not module_type:
-            raise ADHDError(
-                f"pyproject.toml missing [tool.adhd] type: {pyproject_path}"
-            ) from None
+        # Infer folder from module name suffix
+        # e.g., config_manager -> managers, logger_util -> utils
+        module_name = pyproject_path.parent.name
+        target_folder = self._infer_folder_from_name(module_name)
         
-        return package_name, module_type
+        return package_name, target_folder
+    
+    def _infer_folder_from_name(self, module_name: str) -> str:
+        """Infer the target folder from the module name suffix.
+        
+        Args:
+            module_name: Module directory name (e.g., 'config_manager')
+            
+        Returns:
+            Target folder (e.g., 'managers')
+        """
+        # Map suffixes to folders
+        suffix_to_folder = {
+            "_manager": "managers",
+            "_util": "utils",
+            "_plugin": "plugins",
+            "_mcp": "mcps",
+            "_core": "cores",
+        }
+        
+        for suffix, folder in suffix_to_folder.items():
+            if module_name.endswith(suffix):
+                return folder
+        
+        # Default to plugins for unknown suffixes
+        return "plugins"
 
     def _extract_folder_name_from_url(self, url: str) -> str:
         """Extract the folder name (repo name) from a git URL.
@@ -423,8 +436,7 @@ class ProjectCreator:
         if installed_modules:
             self.logger.info("  Installed modules:")
             for mod in installed_modules:
-                type_dir = MODULE_TYPE_TO_DIR.get(mod.module_type, "unknown")
-                self.logger.info(f"    ✓ {mod.package_name} -> {type_dir}/{mod.folder_name}/")
+                self.logger.info(f"    ✓ {mod.package_name} -> {mod.folder}/{mod.folder_name}/")
         
         if install_failures:
             self.logger.warning("  Failed to install:")

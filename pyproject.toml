@@ -4,11 +4,11 @@ version = "0.0.1"
 description = "ADHD Framework core: project_creator_core"
 requires-python = ">=3.11"
 dependencies = [
-    "config-manager",
     "logger-util",
     "creator-common-core",
     "exceptions-core",
     "github-api-core",
+    "modules-controller-core",
     "questionary-core",
     "yaml-reading-core",
 ]
@@ -17,17 +17,7 @@ dependencies = [
 Repository = "https://github.com/AI-Driven-Highspeed-Development/project_creator_core.git"
 
 [tool.adhd]
-type = "core"
 layer = "dev"
-
-[tool.uv.sources]
-config-manager = { git = "https://github.com/AI-Driven-Highspeed-Development/config-manager.git" }
-logger-util = { git = "https://github.com/AI-Driven-Highspeed-Development/Logger-Util.git" }
-creator-common-core = { git = "https://github.com/AI-Driven-Highspeed-Development/creator_common_core.git" }
-exceptions-core = { git = "https://github.com/AI-Driven-Highspeed-Development/exceptions_core.git" }
-github-api-core = { git = "https://github.com/AI-Driven-Highspeed-Development/github_api_core.git" }
-questionary-core = { git = "https://github.com/AI-Driven-Highspeed-Development/questionary_core.git" }
-yaml-reading-core = { git = "https://github.com/AI-Driven-Highspeed-Development/yaml_reading_core.git" }
 
 [build-system]
 requires = ["hatchling"]
