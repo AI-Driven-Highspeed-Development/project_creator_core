@@ -9,8 +9,7 @@ dependencies = [
     "exceptions-core",
     "github-api-core",
     "modules-controller-core",
-    "questionary-core",
-    "yaml-reading-core",
+    "pyyaml>=6.0",
 ]
 
 [project.urls]

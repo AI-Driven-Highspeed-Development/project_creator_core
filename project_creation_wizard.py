@@ -7,13 +7,13 @@ from typing import List, Optional
 from creator_common_core import (
     RepoCreationOptions,
     to_snake_case,
+    QuestionaryCore,
 )
 from .project_creator import ProjectCreator, ProjectParams
 from .preload_sets import parse_preload_sets, PreloadSet
 from exceptions_core import ADHDError
-from questionary_core import QuestionaryCore
 from logger_util import Logger
-from yaml_reading_core import YamlReadingCore
+from .yaml_utils import YamlReader
 
 
 @dataclass
@@ -139,7 +139,7 @@ def _load_and_select_preload_sets(
         return []
     
     try:
-        yf = YamlReadingCore.read_yaml(PRELOAD_SETS_PATH)
+        yf = YamlReader.read_yaml(PRELOAD_SETS_PATH)
         always_urls, optional_sets = parse_preload_sets(yf)
     except Exception as exc:
         logger.warning(f"Failed to load preload sets: {exc}")
@@ -149,8 +149,8 @@ def _load_and_select_preload_sets(
     module_urls = list(always_urls)
     logger.info(f"📦 Including {len(always_urls)} core modules automatically:")
     for url in always_urls:
-        # Extract module name from URL for cleaner display
-        module_name = url.rstrip('.git').split('/')[-1]
+        # Extract module name from URL for cleaner display (normalized to snake_case)
+        module_name = url.rstrip('.git').split('/')[-1].lower().replace("-", "_")
         logger.info(f"   • {module_name}")
     
     # If no optional sets available, return just the always modules

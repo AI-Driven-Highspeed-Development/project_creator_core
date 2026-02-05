@@ -27,15 +27,14 @@ uv run adhd --help
 
 ```
 {project_name}/
-├── cores/          # Core framework modules
-├── managers/       # Manager modules
-├── utils/          # Utility modules
-├── plugins/        # Plugin modules
-├── mcps/           # MCP (Model Context Protocol) servers
-├── project/        # Project-specific data
-├── tests/          # Test files
-├── app.py          # Application entry point
-└── pyproject.toml  # Project configuration
+├── modules/
+│   ├── foundation/   # Bootstrap modules (config, logging)
+│   ├── runtime/      # Production application modules
+│   └── dev/          # Development-only tools
+├── project/          # Project-specific data
+├── tests/            # Test files
+├── app.py            # Application entry point
+└── pyproject.toml    # Project configuration
 ```
 
 ## Development

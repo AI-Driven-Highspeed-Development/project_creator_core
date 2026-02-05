@@ -4,7 +4,7 @@ Fast, opinionated scaffolder that creates ADHD Framework projects with uv worksp
 
 ## Overview
 - Creates new projects with **uv workspace** configuration
-- Clones modules into type-specific folders (`cores/`, `managers/`, `utils/`, `plugins/`, `mcps/`)
+- Clones modules into layer-specific folders (`modules/foundation/`, `modules/runtime/`, `modules/dev/`)
 - Generates `[tool.uv.sources]` with workspace references for ADHD modules
 - Dependencies between ADHD modules resolve locally (no PyPI lookup required)
 - Supports optional GitHub repo creation + initial push via shared creator helpers
@@ -21,7 +21,7 @@ When creating a project with preload modules:
 
 1. **Clone modules** – Each module URL is cloned temporarily
 2. **Extract metadata** – Reads `pyproject.toml` for package name, module type
-3. **Install to workspace** – Moves module to `cores/`, `managers/`, etc. based on type
+3. **Install to workspace** – Moves module to `modules/foundation/`, `modules/runtime/`, or `modules/dev/` based on layer
 4. **Generate pyproject.toml** – Creates workspace config with all modules as workspace sources
 5. **Run uv sync** – Dependencies resolve locally between workspace members
 
@@ -37,11 +37,9 @@ dependencies = [
 
 [tool.uv.workspace]
 members = [
-    "cores/*",
-    "managers/*",
-    "utils/*",
-    "plugins/*",
-    "mcps/*",
+    "modules/foundation/*",
+    "modules/runtime/*",
+    "modules/dev/*",
 ]
 
 [tool.uv.sources]
@@ -77,7 +75,7 @@ Interactive wizard:
 
 \`\`\`python
 from project_creator_core.project_creation_wizard import run_project_creation_wizard
-from questionary_core import QuestionaryCore
+from creator_common_core import QuestionaryCore
 from logger_util import Logger
 
 run_project_creation_wizard(
@@ -119,21 +117,19 @@ class PreloadSet:
 def parse_preload_sets(yaml: YamlFile) -> tuple[list[str], list[PreloadSet]]: ...
 \`\`\`
 
-## Module Type Mapping
+## Module Layers
 
-Modules are installed to directories based on `[tool.adhd].type` in their `pyproject.toml`:
+Modules are installed to directories based on `[tool.adhd].layer` in their `pyproject.toml`:
 
-| Module Type | Target Directory |
-|-------------|------------------|
-| \`core\`      | \`cores/\`         |
-| \`manager\`   | \`managers/\`      |
-| \`util\`      | \`utils/\`         |
-| \`plugin\`    | \`plugins/\`       |
-| \`mcp\`       | \`mcps/\`          |
+| Layer       | Target Directory      |
+|-------------|----------------------|
+| `foundation`| `modules/foundation/` |
+| `runtime`   | `modules/runtime/`    |
+| `dev`       | `modules/dev/`        |
 
 ## Notes
-- Modules must have `[tool.adhd].type` in their `pyproject.toml` for correct placement
-- Unknown types default to `plugins/`
+- Modules must have `[tool.adhd].layer` in their `pyproject.toml` for correct placement
+- Unknown layers default to `modules/runtime/`
 - The `.git` folder is removed from cloned modules (no nested git repos)
 
 ## Requirements & prerequisites
@@ -143,7 +139,7 @@ Modules are installed to directories based on `[tool.adhd].type` in their `pypro
 
 ## Troubleshooting
 - **Module clone fails** – run \`gh auth status\` to confirm GitHub CLI auth
-- **Wrong module directory** – check module's \`[tool.adhd].type\` in \`pyproject.toml\`
+- **Wrong module directory** – check module's `[tool.adhd].layer` in `pyproject.toml`
 - **uv sync fails** – ensure all modules have valid \`pyproject.toml\` with package names
 - **Missing dependencies** – modules may need PyPI dependencies in their \`requirements.txt\`
 

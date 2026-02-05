@@ -6,19 +6,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import subprocess
-
-try:
-    import tomllib  # Python 3.11+
-except ImportError:
-    import tomli as tomllib  # Fallback for older Python
-
+import tomllib
 from exceptions_core import ADHDError
 from creator_common_core import (
     RepoCreationOptions,
     create_remote_repo,
 )
 from logger_util import Logger
-from modules_controller_core import MODULE_FOLDERS
+from modules_controller_core import (
+    MODULES_DIR,
+    LAYER_SUBFOLDERS,
+    LAYER_RUNTIME,
+)
 
 
 # ============================================================================
@@ -28,10 +27,26 @@ from modules_controller_core import MODULE_FOLDERS
 
 TEMPLATES_DIR = Path(__file__).parent / "data" / "templates"
 
-# Path to the framework's adhd_framework.py - used for direct copy to new projects
-# This resolves to the actual framework root, not a template
-FRAMEWORK_ROOT = Path(__file__).parent.parent.parent
-ADHD_FRAMEWORK_FILE = FRAMEWORK_ROOT / "adhd_framework.py"
+
+def _get_adhd_framework_file() -> Path:
+    """Get the path to adhd_framework.py in the framework root.
+    
+    Uses Path.cwd() which is the standard pattern in ADHD Framework.
+    ADHD CLI commands are always run from the framework root directory.
+    
+    Returns:
+        Path to adhd_framework.py
+        
+    Raises:
+        ADHDError: If adhd_framework.py is not found at the expected location
+    """
+    framework_file = Path.cwd() / "adhd_framework.py"
+    if not framework_file.exists():
+        raise ADHDError(
+            f"Framework file not found: {framework_file}. "
+            "Ensure you are running from the ADHD Framework root directory."
+        )
+    return framework_file
 
 
 def _load_template(name: str) -> str:
@@ -44,11 +59,9 @@ def _load_template(name: str) -> str:
 
 # Standard project directories to create
 PROJECT_DIRECTORIES = [
-    "cores",
-    "managers",
-    "utils",
-    "plugins",
-    "mcps",
+    f"{MODULES_DIR}/foundation",
+    f"{MODULES_DIR}/runtime",
+    f"{MODULES_DIR}/dev",
     "project/data",
     "tests",
 ]
@@ -58,7 +71,7 @@ PROJECT_DIRECTORIES = [
 class ModuleInfo:
     """Metadata extracted from a cloned module."""
     package_name: str  # From [project] name in pyproject.toml
-    folder: str        # Inferred from path or [tool.adhd] type -> folder mapping
+    layer: str         # Layer from [tool.adhd] layer in pyproject.toml
     folder_name: str   # The directory name (e.g., 'config_manager')
     git_url: str       # Original git URL
 
@@ -213,14 +226,9 @@ class ProjectCreator:
         This copies the real framework CLI file (not a template) to enable
         the 'adhd' command in the new project.
         """
-        if not ADHD_FRAMEWORK_FILE.exists():
-            raise ADHDError(
-                f"Framework file not found: {ADHD_FRAMEWORK_FILE}. "
-                "Cannot copy adhd_framework.py to new project."
-            )
-        
+        adhd_framework_file = _get_adhd_framework_file()
         dest_file = project_path / "adhd_framework.py"
-        shutil.copy2(ADHD_FRAMEWORK_FILE, dest_file)
+        shutil.copy2(adhd_framework_file, dest_file)
         self.logger.info(f"Copied adhd_framework.py to {dest_file}")
 
     def _run_uv_sync(self, project_path: Path) -> None:
@@ -275,7 +283,7 @@ class ProjectCreator:
                         url, folder_name, temp_base, project_path
                     )
                     installed_modules.append(module_info)
-                    self.logger.info(f"  ✓ Installed {module_info.package_name} to {module_info.folder}/")
+                    self.logger.info(f"  ✓ Installed {module_info.package_name} to {MODULES_DIR}/{module_info.layer}/")
                 except Exception as e:
                     error_msg = str(e)
                     self.logger.error(f"  ✗ Failed to install {folder_name}: {error_msg}")
@@ -327,17 +335,17 @@ class ProjectCreator:
         if not pyproject_path.exists():
             raise ADHDError(f"Module missing pyproject.toml: {folder_name}") from None
         
-        package_name, target_folder = self._extract_module_metadata(pyproject_path)
+        package_name, target_layer = self._extract_module_metadata(pyproject_path)
         
-        # Validate target folder
-        if target_folder not in MODULE_FOLDERS:
+        # Validate target layer
+        if target_layer not in LAYER_SUBFOLDERS:
             raise ADHDError(
-                f"Unknown target folder '{target_folder}' for {folder_name}. "
-                f"Expected one of: {MODULE_FOLDERS}"
+                f"Unknown layer '{target_layer}' for {folder_name}. "
+                f"Expected one of: {LAYER_SUBFOLDERS}"
             ) from None
         
-        # Move to correct workspace folder
-        target_dir = project_path / target_folder / folder_name
+        # Move to correct workspace folder: modules/{layer}/{folder_name}
+        target_dir = project_path / MODULES_DIR / target_layer / folder_name
         if target_dir.exists():
             self.logger.warning(f"Module already exists at {target_dir}, skipping...")
             raise ADHDError(f"Module already exists: {target_dir}") from None
@@ -346,21 +354,21 @@ class ProjectCreator:
         
         return ModuleInfo(
             package_name=package_name,
-            folder=target_folder,
+            layer=target_layer,
             folder_name=folder_name,
             git_url=git_url,
         )
 
     def _extract_module_metadata(self, pyproject_path: Path) -> tuple[str, str]:
-        """Extract package name and target folder from pyproject.toml.
+        """Extract package name and layer from pyproject.toml.
         
-        The folder is inferred from the module name suffix (e.g., _manager -> managers).
+        The layer is read from [tool.adhd] layer field. Defaults to 'runtime' if not specified.
         
         Args:
             pyproject_path: Path to the module's pyproject.toml
             
         Returns:
-            Tuple of (package_name, target_folder)
+            Tuple of (package_name, layer)
             
         Raises:
             ADHDError: If required fields are missing
@@ -376,47 +384,27 @@ class ProjectCreator:
                 f"pyproject.toml missing [project] name: {pyproject_path}"
             ) from None
         
-        # Infer folder from module name suffix
-        # e.g., config_manager -> managers, logger_util -> utils
-        module_name = pyproject_path.parent.name
-        target_folder = self._infer_folder_from_name(module_name)
+        # Read layer from [tool.adhd] layer, default to 'runtime' if not specified
+        adhd_section = data.get("tool", {}).get("adhd", {})
+        layer = adhd_section.get("layer", LAYER_RUNTIME)
         
-        return package_name, target_folder
-    
-    def _infer_folder_from_name(self, module_name: str) -> str:
-        """Infer the target folder from the module name suffix.
-        
-        Args:
-            module_name: Module directory name (e.g., 'config_manager')
-            
-        Returns:
-            Target folder (e.g., 'managers')
-        """
-        # Map suffixes to folders
-        suffix_to_folder = {
-            "_manager": "managers",
-            "_util": "utils",
-            "_plugin": "plugins",
-            "_mcp": "mcps",
-            "_core": "cores",
-        }
-        
-        for suffix, folder in suffix_to_folder.items():
-            if module_name.endswith(suffix):
-                return folder
-        
-        # Default to plugins for unknown suffixes
-        return "plugins"
+        return package_name, layer
 
     def _extract_folder_name_from_url(self, url: str) -> str:
-        """Extract the folder name (repo name) from a git URL.
+        """Extract the folder name (repo name) from a git URL, normalized to snake_case.
+        
+        The extracted name is normalized to Python-importable format (lowercase with underscores)
+        to match ADHD Framework module naming conventions.
         
         Examples:
-            https://github.com/org/Config-Manager.git -> Config-Manager
-            https://github.com/org/logger_util.git -> logger_util
+            https://github.com/org/Config-Manager.git -> config_manager
+            https://github.com/org/Logger-Util.git -> logger_util
+            https://github.com/org/workspace_core.git -> workspace_core
         """
         # Remove .git suffix and get the repo name
-        return url.rstrip("/").removesuffix(".git").split("/")[-1]
+        raw_name = url.rstrip("/").removesuffix(".git").split("/")[-1]
+        # Normalize to Python-importable format (snake_case)
+        return raw_name.lower().replace("-", "_")
 
     def _report_installation_summary(
         self,
@@ -436,7 +424,7 @@ class ProjectCreator:
         if installed_modules:
             self.logger.info("  Installed modules:")
             for mod in installed_modules:
-                self.logger.info(f"    ✓ {mod.package_name} -> {mod.folder}/{mod.folder_name}/")
+                self.logger.info(f"    ✓ {mod.package_name} -> {MODULES_DIR}/{mod.layer}/{mod.folder_name}/")
         
         if install_failures:
             self.logger.warning("  Failed to install:")

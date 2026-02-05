@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Dict, Any, Tuple
 
-from yaml_reading_core import YamlFile
+from .yaml_utils import YamlFile
 
 
 @dataclass

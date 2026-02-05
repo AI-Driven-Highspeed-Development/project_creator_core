@@ -34,11 +34,7 @@ ENV/
 htmlcov/
 
 # ADHD Framework (cloned modules are workspace members)
-cores/
-managers/
-utils/
-plugins/
-mcps/
+modules/
 .config.backup
 .github/
 
